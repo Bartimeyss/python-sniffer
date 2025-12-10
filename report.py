@@ -86,8 +86,8 @@ def parse_tcp_payload(segment):
 
 def decode_dns_name(buf, offset):
     labels = []
-    jumped = False
     seen = set()
+    next_offset = None
     while True:
         if offset >= len(buf):
             return None, None
@@ -97,14 +97,15 @@ def decode_dns_name(buf, offset):
         length = buf[offset]
         if length == 0:
             offset += 1
+            if next_offset is None:
+                next_offset = offset
             break
         if (length & 0xC0) == 0xC0:
             if offset + 1 >= len(buf):
                 return None, None
             pointer = ((length & 0x3F) << 8) | buf[offset + 1]
-            offset += 2
-            if not jumped:
-                jumped = True
+            if next_offset is None:
+                next_offset = offset + 2
             offset = pointer
             continue
         offset += 1
@@ -112,7 +113,7 @@ def decode_dns_name(buf, offset):
             return None, None
         labels.append(buf[offset : offset + length].decode(errors="ignore"))
         offset += length
-    return ".".join(labels), offset
+    return ".".join(labels), next_offset
 
 def parse_dns_queries(payload):
     if len(payload) < 12:
@@ -149,8 +150,8 @@ def parse_tls_sni(payload):
     idx = 4
     if len(body) < idx + 2 + 32 + 1:
         return None
-    idx += 2  # version
-    idx += 32  # random
+    idx += 2
+    idx += 32
     session_len = body[idx]
     idx += 1
     if len(body) < idx + session_len + 2:
@@ -193,18 +194,10 @@ def parse_tls_sni(payload):
     return None
 
 def resolve_host(ip):
-    if ip in HOST_CACHE:
-        return HOST_CACHE[ip]
-    try:
-        name, _, _ = socket.gethostbyaddr(ip)
-    except Exception:
-        name = None
-    HOST_CACHE[ip] = name
-    return name
+    return None
 
 def format_addr(ip):
-    host = resolve_host(ip)
-    return f"{ip} ({host})" if host else ip
+    return ip
 
 def generate_report(pcap_path, time_bucket_sec=60):
     bytes_per_ip = defaultdict(int)
