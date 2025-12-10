@@ -13,7 +13,7 @@ def main():
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     print(
-        f"Summary: ran {result.testsRun} tests, failures={len(result.failures)}, errors={len(result.errors)}"
+        f"Summary: запущего {result.testsRun} тестов, ошибок={len(result.failures)}"
     )
     return 0 if result.wasSuccessful() else 1
 
