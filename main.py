@@ -3,8 +3,12 @@ import select
 import socket
 import struct
 
-from pcap_utils import write_pcap_global_header, write_pcap_packet
-from report import format_addr, generate_report, parse_ipv4_from_ethernet
+try:
+    from pcap_utils import write_pcap_global_header, write_pcap_packet
+    from report import format_addr, generate_report, parse_ipv4_from_ethernet
+except ImportError:  # pragma: no cover - fallback for package usage
+    from .pcap_utils import write_pcap_global_header, write_pcap_packet
+    from .report import format_addr, generate_report, parse_ipv4_from_ethernet
 
 def format_packet_info(packet):
     if len(packet) < 14:

@@ -5,6 +5,11 @@ import struct
 import tempfile
 import unittest
 from unittest import mock
+import sys
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 import main
 from pcap_utils import PCAP_PACKET_HEADER_FMT

@@ -1,9 +1,12 @@
 import struct
 import socket
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
-from pcap_utils import PCAP_PACKET_HEADER_FMT
+try:
+    from pcap_utils import PCAP_PACKET_HEADER_FMT
+except ImportError:
+    from .pcap_utils import PCAP_PACKET_HEADER_FMT
 
 ETH_HEADER_LEN = 14
 HOST_CACHE = {}
@@ -194,10 +197,45 @@ def parse_tls_sni(payload):
     return None
 
 def resolve_host(ip):
-    return None
+    if ip in HOST_CACHE:
+        return HOST_CACHE[ip]
+    try:
+        host, _, _ = socket.gethostbyaddr(ip)
+    except Exception:
+        host = None
+    HOST_CACHE[ip] = host
+    return host
 
 def format_addr(ip):
+    host = resolve_host(ip)
+    if host and host != ip:
+        return f"{host} ({ip})"
     return ip
+
+def print_table(headers, rows, right_align=None):
+    right_align = set(right_align or [])
+    columns = len(headers)
+    widths = [len(str(h)) for h in headers]
+    for row in rows:
+        for idx in range(columns):
+            widths[idx] = max(widths[idx], len(str(row[idx])))
+
+    def fmt(row):
+        cells = []
+        for idx in range(columns):
+            cell = str(row[idx])
+            if idx in right_align:
+                cells.append(cell.rjust(widths[idx]))
+            else:
+                cells.append(cell.ljust(widths[idx]))
+        return "  ".join(cells)
+
+    if not rows:
+        return
+    print(fmt(headers))
+    print("  ".join("-" * w for w in widths))
+    for row in rows:
+        print(fmt(row))
 
 def generate_report(pcap_path, time_bucket_sec=60):
     bytes_per_ip = defaultdict(int)
@@ -246,26 +284,48 @@ def generate_report(pcap_path, time_bucket_sec=60):
                 if sni:
                     sni_domains[sni.lower()] += total_len
 
-    print("=== IP и хосты (по объёму трафика) ===")
-    for ip, b in sorted(bytes_per_ip.items(), key=lambda x: x[1], reverse=True)[:20]:
-        label = format_addr(ip)
-        print(f"{label:<40} bytes={b:<10} pkts={pkts_per_ip[ip]}")
+    print("=== Конечные хосты IPv4 ===")
+    endpoint_rows = []
+    for idx, (ip, b) in enumerate(
+        sorted(bytes_per_ip.items(), key=lambda x: x[1], reverse=True)[:20], start=1
+    ):
+        endpoint_rows.append([idx, format_addr(ip), pkts_per_ip[ip], b])
+    if endpoint_rows:
+        print_table(["#", "Хост", "Пакеты", "Байты"], endpoint_rows, right_align={0, 2, 3})
+    else:
+        print("Нет IPv4 трафика в файле.")
 
-    print("\n=== Направления (src -> dst) ===")
-    for (src, dst), b in sorted(bytes_per_pair.items(), key=lambda x: x[1], reverse=True)[:20]:
-        print(f"{format_addr(src):>30} -> {format_addr(dst):<30} bytes={b}")
+    print("\n=== Диалоги (src -> dst) ===")
+    conv_rows = []
+    for idx, ((src, dst), b) in enumerate(
+        sorted(bytes_per_pair.items(), key=lambda x: x[1], reverse=True)[:20], start=1
+    ):
+        conv_rows.append([idx, format_addr(src), "->", format_addr(dst), b])
+    if conv_rows:
+        print_table(["#", "Источник", "", "Назначение", "Байты"], conv_rows, right_align={0, 4})
+    else:
+        print("Направления не найдены.")
 
     print("\n=== Трафик по времени (бакет {} сек) ===".format(time_bucket_sec))
+    time_rows = []
     for bucket_ts in sorted(bytes_per_bucket.keys()):
-        dt = datetime.fromtimestamp(bucket_ts)
-        print(f"{dt}  bytes={bytes_per_bucket[bucket_ts]}")
+        dt = datetime.fromtimestamp(bucket_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        time_rows.append([dt, bytes_per_bucket[bucket_ts]])
+    if time_rows:
+        print_table(["Время", "Байты"], time_rows, right_align={1})
+    else:
+        print("Нет трафика по времени.")
 
     if dns_domains:
-        print("\n=== Домены из DNS (запросы) ===")
+        print("\n=== DNS запросы ===")
+        dns_rows = []
         for dom, b in sorted(dns_domains.items(), key=lambda x: x[1], reverse=True)[:20]:
-            print(f"{dom:<40} bytes={b:<10} queries={dns_queries[dom]}")
+            dns_rows.append([dom, dns_queries[dom], b])
+        print_table(["Домен", "Запросы", "Байты"], dns_rows, right_align={1, 2})
 
     if sni_domains:
-        print("\n=== Домены из TLS SNI ===")
+        print("\n=== TLS SNI ===")
+        sni_rows = []
         for dom, b in sorted(sni_domains.items(), key=lambda x: x[1], reverse=True)[:20]:
-            print(f"{dom:<40} bytes={b}")
+            sni_rows.append([dom, b])
+        print_table(["Домен", "Байты"], sni_rows, right_align={1})
