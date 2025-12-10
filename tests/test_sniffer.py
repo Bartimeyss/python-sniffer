@@ -7,6 +7,7 @@ import unittest
 from unittest import mock
 
 import main
+from pcap_utils import PCAP_PACKET_HEADER_FMT
 
 
 class FakeSocket:
@@ -36,7 +37,6 @@ class SnifferTests(unittest.TestCase):
         def fake_create_socket(iface):
             return sockets_by_iface[iface]
 
-        # select will be called repeatedly; first time return both sockets, then raise KeyboardInterrupt to stop loop.
         select_calls = []
 
         def fake_select(sock_list, *_):
@@ -50,7 +50,6 @@ class SnifferTests(unittest.TestCase):
             with mock.patch("main.create_socket", side_effect=fake_create_socket), mock.patch(
                 "main.select.select", side_effect=fake_select
             ):
-                # suppress stdout noise
                 with contextlib.redirect_stdout(io.StringIO()):
                     main.sniff(["if1", "if2"], tmp.name)
 
@@ -58,17 +57,14 @@ class SnifferTests(unittest.TestCase):
                 global_header = f.read(24)
                 self.assertEqual(len(global_header), 24)
 
-                # first packet
                 header1 = f.read(16)
-                ts_sec1, ts_usec1, incl_len1, orig_len1 = struct.unpack(main.PCAP_PACKET_HEADER_FMT, header1)
+                ts_sec1, ts_usec1, incl_len1, orig_len1 = struct.unpack(PCAP_PACKET_HEADER_FMT, header1)
                 data1 = f.read(incl_len1)
 
-                # second packet
                 header2 = f.read(16)
-                ts_sec2, ts_usec2, incl_len2, orig_len2 = struct.unpack(main.PCAP_PACKET_HEADER_FMT, header2)
+                ts_sec2, ts_usec2, incl_len2, orig_len2 = struct.unpack(PCAP_PACKET_HEADER_FMT, header2)
                 data2 = f.read(incl_len2)
 
-                # no extra packets
                 self.assertEqual(f.read(), b"")
 
             self.assertEqual(data1, b"aaa")
@@ -76,7 +72,6 @@ class SnifferTests(unittest.TestCase):
             self.assertEqual(incl_len1, len(data1))
             self.assertEqual(incl_len2, len(data2))
 
-            # sockets were closed
             self.assertTrue(sock1.closed)
             self.assertTrue(sock2.closed)
         finally:

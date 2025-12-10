@@ -6,7 +6,7 @@ import tempfile
 import struct
 import unittest
 
-from main import write_pcap_global_header, write_pcap_packet
+from pcap_utils import write_pcap_global_header, write_pcap_packet
 from report import generate_report, parse_ipv4_from_ethernet
 
 
@@ -15,14 +15,14 @@ def build_ipv4_frame(src_ip, dst_ip, payload):
     src_mac = b"\x11\x22\x33\x44\x55\x66"
     eth_header = struct.pack("!6s6sH", dest_mac, src_mac, 0x0800)
 
-    ver_ihl = (4 << 4) | 5  # IPv4, header length 5 words
+    ver_ihl = (4 << 4) | 5
     tos = 0
     total_len = 20 + len(payload)
     ident = 0
     flags_frag = 0
     ttl = 64
-    proto = 6  # TCP
-    checksum = 0  # не считаем, для отчёта не важно
+    proto = 6
+    checksum = 0
     src_bytes = socket.inet_aton(src_ip)
     dst_bytes = socket.inet_aton(dst_ip)
     ip_header = struct.pack(
@@ -52,8 +52,8 @@ class ReportTests(unittest.TestCase):
         try:
             with open(tmp.name, "wb") as f:
                 write_pcap_global_header(f)
-                frame1 = build_ipv4_frame("192.0.2.1", "192.0.2.2", b"a" * 10)  # total_len 30
-                frame2 = build_ipv4_frame("192.0.2.2", "192.0.2.1", b"b" * 20)  # total_len 40
+                frame1 = build_ipv4_frame("192.0.2.1", "192.0.2.2", b"a" * 10)
+                frame2 = build_ipv4_frame("192.0.2.2", "192.0.2.1", b"b" * 20)
                 write_pcap_packet(f, frame1, ts=1_000)
                 write_pcap_packet(f, frame2, ts=1_030)
 
@@ -64,12 +64,12 @@ class ReportTests(unittest.TestCase):
 
             self.assertIn("192.0.2.1", captured)
             self.assertIn("192.0.2.2", captured)
-            self.assertIn("bytes=70", captured)  # для каждого IP суммарно 30 + 40
+            self.assertIn("bytes=70", captured)
             self.assertIn("192.0.2.1 -> 192.0.2.2", captured)
             self.assertIn("bytes=30", captured)
             self.assertIn("192.0.2.2 -> 192.0.2.1", captured)
             self.assertIn("bytes=40", captured)
-            self.assertIn("bytes=70", captured)  # bucket total
+            self.assertIn("bytes=70", captured)
         finally:
             os.unlink(tmp.name)
 

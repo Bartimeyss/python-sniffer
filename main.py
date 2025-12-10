@@ -1,50 +1,11 @@
 import argparse
 import select
 import socket
-import struct
-import sys
-import time
 
 from report import generate_report
-
-PCAP_GLOBAL_HEADER_FMT = "IHHIIII"
-PCAP_PACKET_HEADER_FMT = "IIII"
-
-def write_pcap_global_header(f, snaplen=65535, linktype=1):
-    # magic_number, version_major, version_minor, thiszone, sigfigs, snaplen, network
-    global_header = struct.pack(
-        PCAP_GLOBAL_HEADER_FMT,
-        0xa1b2c3d4,  # magic
-        2,           # major
-        4,           # minor
-        0,           # thiszone
-        0,           # sigfigs
-        snaplen,     # snaplen
-        linktype     # network (1 = Ethernet)
-    )
-    f.write(global_header)
-
-def write_pcap_packet(f, data, ts=None):
-    if ts is None:
-        ts = time.time()
-    ts_sec = int(ts)
-    ts_usec = int((ts - ts_sec) * 1_000_000)
-
-    incl_len = len(data)
-    orig_len = len(data)
-
-    pkt_header = struct.pack(
-        PCAP_PACKET_HEADER_FMT,
-        ts_sec,
-        ts_usec,
-        incl_len,
-        orig_len
-    )
-    f.write(pkt_header)
-    f.write(data)
+from pcap_utils import write_pcap_global_header, write_pcap_packet
 
 def create_socket(iface):
-    # AF_PACKET + SOCK_RAW — только на Linux
     sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
     sock.bind((iface, 0))
     return sock
@@ -65,8 +26,6 @@ def sniff(ifaces, out_file="capture.pcap"):
             for s in sockets:
                 s.close()
             return
-
-        sock_to_iface = {s: iface for s, iface in zip(sockets, ifaces)}
 
         print(f"Сниффер запущен на интерфейсах {', '.join(ifaces)}, запись в {out_file}")
         print("Нажмите Ctrl+C, чтобы остановить")
